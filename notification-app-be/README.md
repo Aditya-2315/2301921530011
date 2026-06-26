@@ -660,3 +660,281 @@ These can be added without significant changes to the existing design.
 # Design Summary
 
 The proposed database schema is normalized, scalable, and optimized for high read performance. Appropriate indexing, partitioning, and caching strategies ensure efficient retrieval of notifications while maintaining data integrity and supporting future enhancements.
+
+
+# Stage 3: SQL Query Optimization
+
+## Objective
+
+Optimize the SQL queries used by the notification system to improve performance and efficiently handle a large number of notifications.
+
+---
+
+## Existing Query
+
+The current query retrieves all unread notifications for a user.
+
+```sql
+SELECT *
+FROM notifications
+WHERE user_id = ?
+AND is_read = FALSE
+ORDER BY created_at DESC;
+```
+
+This query works correctly but may become slow as the number of notifications increases.
+
+---
+
+## Problems
+
+- `SELECT *` retrieves all columns, even if they are not required.
+- Without proper indexes, the database performs a full table scan.
+- Sorting a large number of records increases query execution time.
+
+---
+
+## Optimized Query
+
+Retrieve only the required columns and limit the number of results.
+
+```sql
+SELECT
+    id,
+    type,
+    title,
+    message,
+    created_at
+FROM notifications
+WHERE user_id = ?
+AND is_read = FALSE
+ORDER BY created_at DESC
+LIMIT 20;
+```
+
+### Benefits
+
+- Fetches only required data.
+- Faster execution.
+- Lower memory usage.
+- Supports pagination.
+
+---
+
+## Recommended Index
+
+Create a composite index to improve filtering and sorting.
+
+```sql
+CREATE INDEX idx_notifications_user_read_created
+ON notifications(user_id, is_read, created_at DESC);
+```
+
+This helps the database quickly locate unread notifications for a user.
+
+---
+
+## Query for Placement Notifications
+
+```sql
+SELECT
+    id,
+    title,
+    message,
+    created_at
+FROM notifications
+WHERE type = 'Placement'
+AND created_at >= NOW() - INTERVAL '7 days'
+ORDER BY created_at DESC;
+```
+
+This query returns all placement notifications created during the last seven days.
+
+---
+
+## Count Unread Notifications
+
+```sql
+SELECT COUNT(*)
+FROM notifications
+WHERE user_id = ?
+AND is_read = FALSE;
+```
+
+Using `COUNT(*)` is more efficient than retrieving all unread notifications when only the total count is required.
+
+---
+
+## Pagination
+
+Use pagination to avoid loading all notifications at once.
+
+```sql
+SELECT
+    id,
+    title,
+    type,
+    created_at
+FROM notifications
+WHERE user_id = ?
+ORDER BY created_at DESC
+LIMIT 20 OFFSET 0;
+```
+
+### Benefits
+
+- Faster responses
+- Reduced memory usage
+- Better user experience
+
+---
+
+## Why Not Index Every Column?
+
+Creating indexes on every column is not recommended because:
+
+- Indexes require additional storage.
+- Insert and update operations become slower.
+- Too many indexes reduce overall database performance.
+
+Indexes should only be created on columns that are frequently used for filtering, sorting, or joining tables.
+
+---
+
+## Summary
+
+The notification system can be optimized by:
+
+- Selecting only the required columns instead of using `SELECT *`.
+- Creating a composite index on `user_id`, `is_read`, and `created_at`.
+- Using pagination with `LIMIT`.
+- Using `COUNT(*)` for unread notification counts.
+
+These optimizations improve query performance and help the system efficiently manage a large number of notifications.
+
+# Stage 4: Improving Notification System Scalability
+
+## Objective
+
+Improve the notification system so it can handle a large number of users and notifications while maintaining good performance, reliability, and availability.
+
+---
+
+## 1. Pagination
+
+Instead of returning all notifications in a single request, the API should return them in smaller pages.
+
+Example:
+
+```http
+GET /notifications?page=1&limit=20
+```
+
+### Benefits
+
+- Faster API responses
+- Lower memory usage
+- Better user experience
+- Efficient handling of large datasets
+
+---
+
+## 2. Database Indexing
+
+Create indexes on columns that are frequently used for filtering and sorting.
+
+Example:
+
+```sql
+CREATE INDEX idx_notifications_user
+ON notifications(user_id);
+
+CREATE INDEX idx_notifications_user_read_created
+ON notifications(user_id, is_read, created_at DESC);
+```
+
+### Benefits
+
+- Faster queries
+- Improved sorting performance
+- Reduced database load
+
+---
+
+## 3. Redis Caching
+
+Store frequently accessed data, such as unread notification counts and recently viewed notifications, in Redis.
+
+### Benefits
+
+- Reduces database requests
+- Faster response times
+- Improves application performance
+
+---
+
+## 4. Background Processing
+
+Notification delivery should be handled by background workers instead of the API server. The API only creates the notification request, while workers process and deliver notifications asynchronously.
+
+### Benefits
+
+- Faster API responses
+- Better scalability
+- Reliable notification delivery
+
+---
+
+## 5. Load Balancing
+
+Deploy multiple backend servers behind a load balancer to distribute incoming requests evenly.
+
+### Benefits
+
+- Prevents server overload
+- Improves availability
+- Supports horizontal scaling
+
+---
+
+## 6. WebSockets
+
+Use WebSockets to deliver notifications instantly to connected users instead of relying on frequent polling.
+
+### Benefits
+
+- Real-time notification delivery
+- Lower network traffic
+- Better user experience
+
+---
+
+## 7. Monitoring
+
+Continuously monitor the application to identify performance issues and failures.
+
+Important metrics include:
+
+- API response time
+- Database performance
+- Error rate
+- Failed notifications
+- CPU and memory usage
+
+The provided logging middleware can be used to record important events and simplify debugging.
+
+---
+
+## Summary
+
+The notification system can be made scalable by:
+
+- Implementing pagination for large datasets.
+- Creating appropriate database indexes.
+- Using Redis for caching frequently accessed data.
+- Processing notifications in the background.
+- Using load balancing to distribute traffic.
+- Delivering notifications in real time with WebSockets.
+- Monitoring application health using logs and performance metrics.
+
+These improvements ensure the system remains fast, reliable, and capable of supporting a growing number of users and notifications.
