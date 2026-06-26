@@ -1,6 +1,7 @@
 import axios from "axios"
-
-const LOG_URL = process.env.LOG_API;;
+import dotenv from "dotenv"
+dotenv.config()
+const LOG_URL = `${process.env.BASE_URL}/logs`;
 
 export async function Log(stack, level, pkg, message) {
   try {
@@ -19,7 +20,7 @@ export async function Log(stack, level, pkg, message) {
         },
       }
     );
-
+    
     return data;
   } catch (err) {
     console.error(

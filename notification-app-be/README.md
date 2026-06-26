@@ -938,3 +938,200 @@ The notification system can be made scalable by:
 - Monitoring application health using logs and performance metrics.
 
 These improvements ensure the system remains fast, reliable, and capable of supporting a growing number of users and notifications.
+
+# Stage 5: Redesigning the Bulk Notification System
+
+## Objective
+
+Improve the bulk notification system so that notifications can be sent to thousands of users efficiently without slowing down the application.
+
+---
+
+## Current Problem
+
+Currently, notifications are sent one by one within the API request. This approach has several drawbacks:
+
+- The API response becomes slow.
+- Server resources are heavily used.
+- A failure while sending one notification can interrupt the entire process.
+- The system does not scale well for a large number of users.
+
+---
+
+## Proposed Solution
+
+Instead of sending notifications directly, the backend should place each notification into a **message queue**. Separate worker processes will read from the queue and send notifications in the background.
+
+This allows the API to respond immediately while notifications are processed asynchronously.
+
+---
+
+## Retry Mechanism
+
+If a notification fails to send due to a temporary issue, the worker should retry it automatically.
+
+For example:
+
+- First attempt fails.
+- Retry up to 3 times.
+- If all retries fail, move the notification to a failed queue for later review.
+
+This improves the reliability of the system.
+
+---
+
+## Dead Letter Queue (DLQ)
+
+Notifications that still fail after all retry attempts should be moved to a **Dead Letter Queue (DLQ)**.
+
+Benefits:
+
+- Failed notifications are not lost.
+- Administrators can inspect and resend them later.
+- Simplifies debugging of delivery failures.
+
+---
+
+## Idempotency
+
+Each notification should have a unique identifier.
+
+Before sending a notification, the worker checks whether it has already been delivered. If it has, the notification is skipped.
+
+This prevents duplicate notifications when retries occur.
+
+---
+
+## Pseudocode
+
+```text
+function notifyAll(users, message):
+
+    for each user:
+        add notification to queue
+
+worker():
+
+    while queue is not empty:
+
+        notification = get next notification
+
+        try:
+            send notification
+
+        catch error:
+            retry notification
+
+            if retries exceed limit:
+                move to Dead Letter Queue
+```
+
+---
+
+## Advantages
+
+- Faster API responses
+- Better scalability
+- Reliable notification delivery
+- Automatic retry for temporary failures
+- Prevents duplicate notifications
+- Easier monitoring and maintenance
+
+---
+
+## Conclusion
+
+Using a message queue with background workers makes the notification system more scalable and reliable. The API remains responsive, notifications are delivered asynchronously, failed messages can be retried safely, and the system can efficiently handle a large number of users.
+
+# Stage 6: Top N Priority Notifications
+
+## Objective
+
+Develop a backend API that fetches notifications from the external API and returns the top **N** notifications based on priority.
+
+---
+
+## Priority Order
+
+Notifications are prioritized as follows:
+
+| Notification Type | Priority |
+|-------------------|----------|
+| Placement | High (3) |
+| Result | Medium (2) |
+| Event | Low (1) |
+
+If two notifications have the same priority, the newer notification is ranked higher.
+
+---
+
+## API Endpoint
+
+```http
+GET /api/notifications/priority?limit=10
+```
+
+### Query Parameter
+
+| Parameter | Description |
+|----------|-------------|
+| limit | Number of notifications to return |
+
+---
+
+## Implementation
+
+The backend performs the following steps:
+
+1. Fetch notifications from the external API.
+2. Assign a priority based on the notification type.
+3. Use a **Min Heap** to efficiently maintain the top `N` notifications.
+4. Return the notifications sorted by priority and creation time.
+
+---
+
+## Why Min Heap?
+
+A Min Heap is used because it efficiently keeps only the required top `N` notifications instead of sorting the entire dataset.
+
+### Benefits
+
+- Better performance for large datasets.
+- Lower memory usage.
+- Time complexity of **O(n log k)**, where `k` is the number of notifications to return.
+
+---
+
+## Logging
+
+The backend uses the provided logging middleware to record important events such as:
+
+- Incoming API requests
+- Successful notification retrieval
+- Priority notification generation
+- Errors while calling the external API
+
+---
+
+## Response Example
+
+```json
+{
+  "success": true,
+  "count": 10,
+  "data": [
+    {
+      "id": "1",
+      "type": "Placement",
+      "title": "Amazon Placement Drive",
+      "createdAt": "2026-06-26T10:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+## Summary
+
+The Stage 6 implementation retrieves notifications from the external service, prioritizes them using a Min Heap, logs important events through the logging middleware, and returns the top `N` notifications efficiently.
